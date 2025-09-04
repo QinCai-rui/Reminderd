@@ -1,0 +1,218 @@
+#!/usr/bin/env python3
+"""Reminderd - reminder daemon using a Unix domain socket and sqlite.
+
+Protocol (line-based):
+- ADD|<epoch_seconds>|<message>  -> adds a reminder, returns ID
+- LIST                           -> returns newline-separated list: id|epoch|delivered|message
+- REMOVE|<id>                   -> removes reminder by id
+- PING                           -> replies PONG
+
+The daemon periodically checks for due reminders and uses `notify-send` to show a desktop notification.
+"""
+# Code quality sucks.  
+import os
+import sys
+import socket
+import threading
+import sqlite3
+import time
+import traceback
+from pathlib import Path
+from datetime import datetime
+import subprocess
+
+# store here so don't need root
+SOCKET_PATH = os.environ.get("REMINDERD_SOCKET", str(Path.home() / ".local" / "share" / "reminderd" / "reminderd.sock"))
+DB_PATH = os.environ.get("REMINDERD_DB", str(Path.home() / ".local" / "share" / "reminderd" / "reminders.db"))
+CHECK_INTERVAL = float(os.environ.get("REMINDERD_CHECK_INTERVAL", "1.0"))
+
+
+def ensure_dirs():
+    d = Path(DB_PATH).parent
+    d.mkdir(parents=True, exist_ok=True)
+
+
+def init_db(conn: sqlite3.Connection):
+    cur = conn.cursor()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS reminders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        when_ts INTEGER NOT NULL,
+        message TEXT NOT NULL,
+        delivered INTEGER NOT NULL DEFAULT 0
+    )
+    """)
+    conn.commit()
+
+
+def add_reminder(conn: sqlite3.Connection, when_ts: int, message: str):
+    cur = conn.cursor()
+    cur.execute("INSERT INTO reminders (when_ts, message) VALUES (?,?)", (int(when_ts), message))
+    conn.commit()
+    return cur.lastrowid
+
+
+def list_reminders(conn: sqlite3.Connection):
+    cur = conn.cursor()
+    cur.execute("SELECT id, when_ts, delivered, message FROM reminders ORDER BY when_ts")
+    return cur.fetchall()
+
+
+def remove_reminder(conn: sqlite3.Connection, rid: int):
+    cur = conn.cursor()
+    cur.execute("DELETE FROM reminders WHERE id=?", (rid,))
+    conn.commit()
+    return cur.rowcount
+
+
+def mark_delivered(conn: sqlite3.Connection, rid: int):
+    cur = conn.cursor()
+    cur.execute("UPDATE reminders SET delivered=1 WHERE id=?", (rid,))
+    conn.commit()
+
+
+def send_notification(summary: str, body: str = ""):
+    # Try notify-send; keep it simple to avoid extra deps.
+    try:
+        subprocess.Popen(["notify-send", summary, body])
+    except Exception:
+        # Best-effort only
+        print("[reminderd] notify-send failed", file=sys.stderr)
+
+
+class ReminderDaemon:
+    def __init__(self, socket_path: str, db_path: str):
+        self.socket_path = socket_path
+        self.db_path = db_path
+        self._stop = threading.Event()
+        ensure_dirs()
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        init_db(self.conn)
+        # Prepare socket
+        self.server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        if os.path.exists(self.socket_path):
+            try:
+                os.unlink(self.socket_path)
+            except Exception:
+                pass
+        # ensure parent exists
+        Path(self.socket_path).parent.mkdir(parents=True, exist_ok=True)
+        self.server.bind(self.socket_path)
+        try:
+            os.chmod(self.socket_path, 0o660)
+        except Exception:
+            pass
+        self.server.listen(5)
+
+    def start(self):
+        self.listener_thread = threading.Thread(target=self._serve_loop, daemon=True)
+        self.checker_thread = threading.Thread(target=self._check_loop, daemon=True)
+        self.listener_thread.start()
+        self.checker_thread.start()
+        print(f"reminderd running, socket={self.socket_path}, db={self.db_path}")
+        try:
+            while not self._stop.is_set():
+                time.sleep(0.2)
+        except KeyboardInterrupt:
+            self.stop()
+
+    def stop(self):
+        self._stop.set()
+        try:
+            self.server.close()
+        except Exception:
+            pass
+        try:
+            if os.path.exists(self.socket_path):
+                os.unlink(self.socket_path)
+        except Exception:
+            pass
+
+    def _serve_loop(self):
+        while not self._stop.is_set():
+            try:
+                client, _ = self.server.accept()
+            except Exception:
+                break
+            t = threading.Thread(target=self._handle_client, args=(client,), daemon=True)
+            t.start()
+
+    def _handle_client(self, client_sock: socket.socket):
+        with client_sock:
+            try:
+                data = b""
+                # read until newline
+                while True:
+                    chunk = client_sock.recv(4096)
+                    if not chunk:
+                        break
+                    data += chunk
+                    if b"\n" in chunk:
+                        break
+                line = data.decode(errors="ignore").strip()
+                if not line:
+                    return
+                resp = self._process_command(line)
+                client_sock.sendall((resp + "\n").encode())
+            except Exception:
+                traceback.print_exc()
+
+    def _process_command(self, line: str) -> str:
+        # Simple pipe-separated protocol
+        parts = line.split("|", 2)
+        cmd = parts[0].upper()
+        if cmd == "ADD":
+            if len(parts) < 3:
+                return "ERR|need epoch|message"
+            when = parts[1]
+            msg = parts[2]
+            try:
+                when_ts = int(float(when))
+            except Exception:
+                return "ERR|bad epoch"
+            rid = add_reminder(self.conn, when_ts, msg)
+            return f"OK|{rid}"
+        elif cmd == "LIST":
+            rows = list_reminders(self.conn)
+            lines = []
+            for r in rows:
+                lines.append(f"{r[0]}|{r[1]}|{r[2]}|{r[3]}")
+            return "OK|" + "\\n".join(lines)
+        elif cmd == "REMOVE":
+            if len(parts) < 2:
+                return "ERR|need id"
+            try:
+                rid = int(parts[1])
+            except Exception:
+                return "ERR|bad id"
+            n = remove_reminder(self.conn, rid)
+            return f"OK|removed:{n}"
+        elif cmd == "PING":
+            return "OK|PONG"
+        else:
+            return "ERR|unknown command"
+
+    def _check_loop(self):
+        while not self._stop.is_set():
+            try:
+                now = int(time.time())
+                cur = self.conn.cursor()
+                cur.execute("SELECT id, when_ts, message FROM reminders WHERE delivered=0 AND when_ts<=?", (now,))
+                due = cur.fetchall()
+                for (rid, when_ts, message) in due:
+                    # Send notification
+                    ts_str = datetime.fromtimestamp(when_ts).strftime('%Y-%m-%d %H:%M:%S')
+                    send_notification(f"Reminder: {ts_str}", message)
+                    mark_delivered(self.conn, rid)
+                time.sleep(CHECK_INTERVAL)
+            except Exception:
+                traceback.print_exc()
+
+
+def main():
+    d = ReminderDaemon(SOCKET_PATH, DB_PATH)
+    d.start()
+
+
+if __name__ == '__main__':
+    main()

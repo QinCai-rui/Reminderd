@@ -1,0 +1,9 @@
+[Unit]
+Description=Socket for Reminderd
+
+[Socket]
+ListenStream=%h/.local/share/reminderd/reminderd.sock
+SocketMode=0660
+
+[Install]
+WantedBy=sockets.target
