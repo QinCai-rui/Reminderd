@@ -9,7 +9,7 @@ Protocol (line-based):
 
 The daemon periodically checks for due reminders and uses `notify-send` to show a desktop notification.
 """
-# Code quality sucks.  
+# Code quality sucks. Part of this is made with help by GitHub Copilot
 import os
 import sys
 import socket
