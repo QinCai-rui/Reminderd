@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=%h/Reminderd/venv/bin/python %h/Reminderd/src/reminderd.py
+ExecStart=%h/Reminderd/venv/bin/python %h/Reminderd/src/reminderd
 Restart=on-failure
 
 [Install]
