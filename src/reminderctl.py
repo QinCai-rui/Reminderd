@@ -28,7 +28,7 @@ def send(cmd: str) -> str:
 
 
 def usage():
-    print("Usage: reminderctl add <epoch> <message>")
+    print("Usage: reminderctl add <epoch> <message>")   # TODO need better time like `at`/`atd`
     print("       reminderctl list")
     print("       reminderctl remove <id>")
     print("       reminderctl ping")
