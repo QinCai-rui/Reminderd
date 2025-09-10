@@ -42,8 +42,35 @@ def main():
     if cmd == 'add':
         if len(sys.argv) < 4:
             usage(); sys.exit(1)
-        when = sys.argv[2]
+        when_arg = sys.argv[2]
         msg = ' '.join(sys.argv[3:])
+        # `shutdown`(from Linux)-style time syntax
+        import time, datetime
+        now = int(time.time())
+        when = None
+        if when_arg == 'now':
+            when = now
+        elif when_arg.startswith('+') and when_arg[1:].isdigit():
+            # +N minutes from now
+            minutes = int(when_arg[1:])
+            when = now + minutes * 60
+        elif ':' in when_arg:
+            # hh:mm today or next day if already passed
+            try:
+                hh, mm = map(int, when_arg.split(':'))
+                dt = datetime.datetime.fromtimestamp(now)
+                target = dt.replace(hour=hh, minute=mm, second=0, microsecond=0)
+                if target.timestamp() < now:
+                    target += datetime.timedelta(days=1)
+                when = int(target.timestamp())
+            except Exception:
+                pass
+        elif when_arg.isdigit():
+            # epoch seconds
+            when = int(when_arg)
+        if when is None:
+            print("Invalid time format. Use now, +N, hh:mm, or epoch.", file=sys.stderr)
+            sys.exit(1)
         resp = send(f"ADD|{when}|{msg}")
         print(resp)
     elif cmd == 'list':
