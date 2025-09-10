@@ -56,7 +56,7 @@ Lightweight reminder daemon for Linux desktop environments. Uses a Unix domain s
    systemctl --user enable --now reminderd.socket
    ```
 
-6. (Optional, recommended) Add Reminderd to your PATH by adding the following line to your `~/.bashrc`, `~/.zshrc`, or whatever shell config file you use:
+6. (Optional, highly recommended) Add Reminderd to your PATH by adding the following line to your `~/.bashrc`, `~/.zshrc`, or whatever shell config file you use:
 
    ```bash
    export PATH="$HOME/Reminderd/src:$PATH"
