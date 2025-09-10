@@ -6,7 +6,6 @@ After=network.target
 Type=simple
 ExecStart=%h/Reminderd/venv/bin/python %h/Reminderd/src/reminderd.py
 Restart=on-failure
-AmbientCapabilities=CAP_NET_BIND_SERVICE
 
 [Install]
 WantedBy=default.target
