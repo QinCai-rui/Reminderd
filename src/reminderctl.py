@@ -35,6 +35,7 @@ def usage():
 
 
 def main():
+    """main entry point."""
     if len(sys.argv) < 2:
         usage(); sys.exit(1)
     cmd = sys.argv[1].lower()
