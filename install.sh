@@ -10,6 +10,7 @@ if [ ! -d "$INSTALL_DIR" ]; then
 	git clone "$REPO_URL" "$INSTALL_DIR"
 else
 	echo "Repo already exists at $INSTALL_DIR. Skipping clone."
+	echo "If you want to update the daemon & CLI, just do `cd $INSTALL_DIR && git pull`."
 fi
 
 echo "Making scripts executable..."
