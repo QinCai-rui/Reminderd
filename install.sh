@@ -13,7 +13,7 @@ else
 fi
 
 echo "Making scripts executable..."
-chmod +x "$INSTALL_DIR"/src/*.py
+chmod +x "$INSTALL_DIR"/src/*
 
 echo "Copying systemd user units..."
 mkdir -p "$SYSTEMD_USER_DIR"
@@ -33,7 +33,7 @@ if [ -n "$ZSH_VERSION" ]; then
 elif [ -n "$BASH_VERSION" ]; then
 	SHELL_CONFIG="$HOME/.bashrc"
 else
-	# Default to ``.bashrc` if shell is unknown
+	# Default to `.bashrc` if shell is unknown
 	SHELL_CONFIG="$HOME/.bashrc"
 fi
 
