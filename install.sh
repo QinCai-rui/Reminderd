@@ -40,8 +40,13 @@ fi
 
 PATH_LINE="export PATH=\"$INSTALL_DIR/src:\$PATH\""
 if ! grep -Fxq "$PATH_LINE" "$SHELL_CONFIG"; then
-	echo "$PATH_LINE" >> "$SHELL_CONFIG"
-	echo "Added Reminderd CLI to $SHELL_CONFIG."
+	if [ -w "$SHELL_CONFIG" ]; then
+		echo "$PATH_LINE" >> "$SHELL_CONFIG"
+		echo "Added Reminderd CLI to $SHELL_CONFIG."
+	else
+		echo "ERROR: Cannot write to $SHELL_CONFIG. Please add the following line manually:" >&2 # print to stderr
+		echo "$PATH_LINE" >&2 # print to stderr
+	fi
 else
 	echo "Reminderd CLI path already present in $SHELL_CONFIG."
 fi
