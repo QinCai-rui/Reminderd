@@ -18,8 +18,8 @@ chmod +x "$INSTALL_DIR"/src/*
 
 echo "Copying systemd user units..."
 mkdir -p "$SYSTEMD_USER_DIR"
-cp "$INSTALL_DIR"/systemd/reminderd.socket "$SYSTEMD_USER_DIR/"
-cp "$INSTALL_DIR"/systemd/reminderd.service "$SYSTEMD_USER_DIR/"
+install -m 644 "$INSTALL_DIR"/systemd/reminderd.socket "$SYSTEMD_USER_DIR/"
+install -m 644 "$INSTALL_DIR"/systemd/reminderd.service "$SYSTEMD_USER_DIR/"
 
 echo "Reloading and enabling reminderd.socket (user)..."
 systemctl --user daemon-reload # this might not be needed, but just in case
