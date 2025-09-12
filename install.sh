@@ -21,7 +21,7 @@ cp "$INSTALL_DIR"/systemd/reminderd.socket "$SYSTEMD_USER_DIR/"
 cp "$INSTALL_DIR"/systemd/reminderd.service "$SYSTEMD_USER_DIR/"
 
 echo "Reloading and enabling reminderd.socket (user)..."
-systemctl --user daemon-reload
+systemctl --user daemon-reload # this might not be needed, but just in case
 systemctl --user enable --now reminderd.socket
 
 echo "Reminderd user-level installation complete."
