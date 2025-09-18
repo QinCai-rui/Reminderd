@@ -16,6 +16,13 @@
     <true/>
     <key>SessionCreate</key>
     <true/>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PATH</key>
+      <string>/usr/local/bin:/usr/bin:/bin</string>
+      <key>DISPLAY</key>
+      <string>:0</string>
+    </dict>
     <key>WorkingDirectory</key>
     <string>$HOME/Reminderd</string>
     <key>StandardOutPath</key>

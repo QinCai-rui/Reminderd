@@ -28,9 +28,16 @@ if [ "$(uname)" = "Darwin" ]; then
 			TMP_PLIST=$(mktemp /tmp/reminderd.plist.XXXXXX)
 			# Replace literal "$HOME" occurrences with the expanded path.
 			sed "s|\$HOME|$HOME|g" "$SOURCE_PLIST" > "$TMP_PLIST"
+			# Verify the expansion worked
+			if grep -q "\$HOME" "$TMP_PLIST"; then
+				echo "ERROR: Failed to expand \$HOME in plist" >&2
+				cat "$TMP_PLIST" >&2
+				exit 1
+			fi
 			install -m 644 "$TMP_PLIST" "$LAUNCH_AGENTS_DIR/"
 			INSTALLED_PLIST="$LAUNCH_AGENTS_DIR/$(basename "$SOURCE_PLIST")"
 			rm -f "$TMP_PLIST"
+			echo "Installed plist with expanded paths to $INSTALLED_PLIST"
 		else
 			echo "ERROR: launchd/reminderd.plist not found in the repository for some reason" >&2
 			exit 1
