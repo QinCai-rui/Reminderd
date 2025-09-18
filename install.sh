@@ -23,8 +23,14 @@ if [ "$(uname)" = "Darwin" ]; then
 		# install plist from repo
 		SOURCE_PLIST="$INSTALL_DIR/launchd/reminderd.plist"
 		if [ -f "$SOURCE_PLIST" ]; then
-			install -m 644 "$SOURCE_PLIST" "$LAUNCH_AGENTS_DIR/"
+			# Expand $HOME in the plist because launchd will not expand env vars in plist files.
+			# Create a temporary plist with absolute paths and install that.
+			TMP_PLIST=$(mktemp /tmp/reminderd.plist.XXXXXX)
+			# Replace literal "$HOME" occurrences with the expanded path.
+			sed "s|\$HOME|$HOME|g" "$SOURCE_PLIST" > "$TMP_PLIST"
+			install -m 644 "$TMP_PLIST" "$LAUNCH_AGENTS_DIR/"
 			INSTALLED_PLIST="$LAUNCH_AGENTS_DIR/$(basename "$SOURCE_PLIST")"
+			rm -f "$TMP_PLIST"
 		else
 			echo "ERROR: launchd/reminderd.plist not found in the repository for some reason" >&2
 			exit 1
