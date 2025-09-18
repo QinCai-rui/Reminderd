@@ -154,6 +154,7 @@ class ReminderDaemon:
         self.socket_path = socket_path
         self.db_path = db_path
         self._stop = threading.Event()
+        self._db_lock = threading.Lock()  # Add database lock
         ensure_dirs()
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         init_db(self.conn)
@@ -242,11 +243,13 @@ class ReminderDaemon:
                 when_ts = int(float(when))
             except Exception:
                 return "ERR|bad epoch"
-            rid = add_reminder(self.conn, when_ts, msg)
+            with self._db_lock:
+                rid = add_reminder(self.conn, when_ts, msg)
             self.logger.info("added reminder id=%s when=%s msg=%s", rid, when_ts, msg)
             return f"OK|{rid}"
         elif cmd == "LIST":
-            rows = list_reminders(self.conn)
+            with self._db_lock:
+                rows = list_reminders(self.conn)
             lines = []
             for r in rows:
                 lines.append(f"{r[0]}|{r[1]}|{r[2]}|{r[3]}")
@@ -258,7 +261,8 @@ class ReminderDaemon:
                 rid = int(parts[1])
             except Exception:
                 return "ERR|bad id"
-            n = remove_reminder(self.conn, rid)
+            with self._db_lock:
+                n = remove_reminder(self.conn, rid)
             self.logger.info("removed reminder id=%s removed=%s", rid, n)
             return f"OK|removed:{n}"
         elif cmd == "PING":
@@ -270,15 +274,27 @@ class ReminderDaemon:
         while not self._stop.is_set():
             try:
                 now = int(time.time())
-                cur = self.conn.cursor()
-                cur.execute("SELECT id, when_ts, message FROM reminders WHERE delivered=0 AND when_ts<=?", (now,))
-                due = cur.fetchall()
+                due = []
+                # Use database lock and transaction to prevent race conditions
+                with self._db_lock:
+                    with self.conn:
+                        cur = self.conn.cursor()
+                        # First, select the due reminders and mark them as delivered atomically
+                        cur.execute("SELECT id, when_ts, message FROM reminders WHERE delivered=0 AND when_ts<=?", (now,))
+                        due = cur.fetchall()
+                        
+                        if due:
+                            # Mark all found reminders as delivered in the same transaction
+                            due_ids = [str(rid) for rid, _, _ in due]
+                            placeholders = ','.join('?' * len(due_ids))
+                            cur.execute(f"UPDATE reminders SET delivered=1 WHERE id IN ({placeholders})", due_ids)
+                
+                # Send notifications outside the database lock to avoid blocking other operations
                 for (rid, when_ts, message) in due:
-                    # Send notification
                     ts_str = datetime.fromtimestamp(when_ts).strftime('%Y-%m-%d %H:%M:%S')
                     self.logger.info("due reminder id=%s when=%s msg=%s", rid, when_ts, message)
                     send_notification(f"Reminder: {ts_str}", message)
-                    mark_delivered(self.conn, rid)
+                        
                 time.sleep(CHECK_INTERVAL)
             except Exception:
                 self.logger.exception("check loop error")
