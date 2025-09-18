@@ -22,6 +22,7 @@ from datetime import datetime
 import subprocess
 import logging
 import logging.handlers
+import shutil
 
 # store here so don't need root
 SOCKET_PATH = os.environ.get("REMINDERD_SOCKET", str(Path.home() / ".local" / "share" / "reminderd" / "reminderd.sock"))
@@ -105,6 +106,26 @@ def send_notification(summary: str, body: str = ""):
     logger = logging.getLogger("reminderd")
     try:
         logger.info("notify: %s - %s", summary, body)
+        # Prefer terminal-notifier (brew) if available — it tends to work well from daemons
+        tn = shutil.which("terminal-notifier")
+        if tn:
+            # terminal-notifier expects -title and -message
+            res = subprocess.run([tn, "-title", summary, "-message", body], capture_output=True, text=True, timeout=5)
+            if res.returncode != 0:
+                logger.warning("terminal-notifier failed rc=%s stdout=%r stderr=%r", res.returncode, res.stdout, res.stderr)
+            else:
+                logger.info("terminal-notifier invoked successfully")
+            return
+        # Debug fallback: show a dialog if user explicitly requests it via env var
+        if os.environ.get("REMINDERD_FORCE_DIALOG") == "1":
+            # blocking dialog for debugging — guaranteed visible if GUI session is available
+            script = 'display dialog "{}" with title "{}"'.format(body.replace('"', '\\"'), summary.replace('"', '\\"'))
+            res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=10)
+            if res.returncode != 0:
+                logger.warning("osascript dialog failed rc=%s stdout=%r stderr=%r", res.returncode, res.stdout, res.stderr)
+            else:
+                logger.info("osascript dialog displayed")
+            return
         if sys.platform == 'darwin':
             esc_body = body.replace('"', '\\"')
             esc_summary = summary.replace('"', '\\"')
