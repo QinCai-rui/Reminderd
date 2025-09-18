@@ -26,16 +26,21 @@ if [ "$(uname)" = "Darwin" ]; then
 			# Expand $HOME in the plist because launchd will not expand env vars in plist files.
 			# Create a temporary plist with absolute paths and install that.
 			TMP_PLIST=$(mktemp /tmp/reminderd.plist.XXXXXX)
-			# Replace literal "$HOME" occurrences with the expanded path.
-			sed "s|\$HOME|$HOME|g" "$SOURCE_PLIST" > "$TMP_PLIST"
-			# Verify the expansion worked
-			if grep -q "\$HOME" "$TMP_PLIST"; then
-				echo "ERROR: Failed to expand \$HOME in plist" >&2
+			# Replace placeholders __HOME__ and __USER__ with expanded paths because launchd will not
+			# expand environment variables in plist files. Expand both to ensure ProgramArguments,
+			# WorkingDirectory and Std paths are absolute.
+			sed "s|__HOME__|$HOME|g; s|__USER__|$USER|g" "$SOURCE_PLIST" > "$TMP_PLIST"
+			# Verify the expansion worked (no remaining $HOME or $USER tokens)
+			if grep -q "\$HOME\|\$USER" "$TMP_PLIST"; then
+				echo "ERROR: Failed to expand \$HOME or \$USER in plist" >&2
 				cat "$TMP_PLIST" >&2
+				rm -f "$TMP_PLIST"
 				exit 1
 			fi
-			install -m 644 "$TMP_PLIST" "$LAUNCH_AGENTS_DIR/"
 			INSTALLED_PLIST="$LAUNCH_AGENTS_DIR/$(basename "$SOURCE_PLIST")"
+			# Install to the final filename (not into the directory keeping the temp basename). This
+			# avoids leaving temporary-named files like reminderd.plist.qADJiq which break launchctl.
+			install -m 644 "$TMP_PLIST" "$INSTALLED_PLIST"
 			rm -f "$TMP_PLIST"
 			echo "Installed plist with expanded paths to $INSTALLED_PLIST"
 		else
@@ -68,13 +73,44 @@ if [ "$(uname)" = "Darwin" ]; then
 				echo "terminal-notifier already installed"
 			fi
 			# Try a test notification to prompt macOS notification permission if needed
-			if command -v terminal-notifier >/dev/null 2>&1; then
-				echo "Sending test notification via terminal-notifier..."
-				terminal-notifier -title "Reminderd" -message "This is a test notification from Reminderd" || true
+			# Prefer terminal-notifier as the primary method. Instead of invoking it directly, exercise the full
+			# pipeline by sending an immediate reminder via reminderctl so the daemon sends notifications using
+			# its configured order (terminal-notifier first on macOS).
+			CLI_BIN="$INSTALL_DIR/src/reminderctl"
+			if [ -x "$CLI_BIN" ]; then
+				echo "Sending test reminder via reminderctl (this exercises the daemon and terminal-notifier)..."
+				# Add a reminder for now (epoch seconds) so the daemon should pick it up immediately
+				NOW_EPOCH=$(date +%s)
+				# Use the daemon socket via reminderctl; reminderctl should connect to the user's socket path
+				"$CLI_BIN" add "$NOW_EPOCH" "Test notification from Reminderd install" || true
+				# Wait briefly for the daemon to process
+				sleep 2
+				# If terminal-notifier is installed we'll trust the daemon, otherwise show a direct osascript test
+				if command -v terminal-notifier >/dev/null 2>&1; then
+					echo "terminal-notifier appears installed; reminderctl test sent. Check for visible notification."
+				else
+					echo "terminal-notifier not found; falling back to osascript notification for manual check."
+					osascript -e 'display notification "Testing osascript notifications" with title "Reminderd Setup" sound name "default"' || true
+				fi
+			else
+				echo "reminderctl not executable at $CLI_BIN; falling back to direct terminal-notifier/osascript tests"
+				if command -v terminal-notifier >/dev/null 2>&1; then
+					echo "Sending direct terminal-notifier test..."
+					terminal-notifier -title "Reminderd Setup" -message "Installation complete! Notifications are working." -sound "default" || true
+				fi
+				echo "Testing osascript notifications..."
+				osascript -e 'display notification "Testing osascript notifications" with title "Reminderd Setup" sound name "default"' || true
+			fi
+				echo ""
+				echo "IMPORTANT: If you don't see notifications above, please:"
+				echo "1. Open System Settings → Notifications"
+				echo "2. Find 'Terminal' or 'terminal-notifier' and enable notifications"
+				echo "3. Also find 'Script Editor' and enable notifications for osascript"
+				echo ""
 				# Open System Settings to Notifications pane to help user enable notifications
 				if [[ "$OSTYPE" == "darwin"* ]]; then
-					# macOS Ventura+ uses 'open' to System Settings; this will open Notifications settings
-					open "x-apple.systempreferences:com.apple.Notifications-Settings.extension"
+					echo "Opening Notification Settings..."
+					open "x-apple.systempreferences:com.apple.Notifications-Settings.extension" || true
 				fi
 			else
 				echo "terminal-notifier not available after attempted install. You may need to install it manually: brew install terminal-notifier"
