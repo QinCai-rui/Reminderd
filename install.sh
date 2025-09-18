@@ -112,9 +112,6 @@ if [ "$(uname)" = "Darwin" ]; then
 					echo "Opening Notification Settings..."
 					open "x-apple.systempreferences:com.apple.Notifications-Settings.extension" || true
 				fi
-			else
-				echo "terminal-notifier not available after attempted install. You may need to install it manually: brew install terminal-notifier"
-			fi
 		else
 			echo "Homebrew not found. To get native macOS notifications install Homebrew (https://brew.sh/) and run: brew install terminal-notifier"
 		fi
