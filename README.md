@@ -87,3 +87,32 @@ Remove:
 - The socket and DB are by default at `~/.local/share/reminderd/`.
 - The daemon sends notifications via `notify-send` when reminders are due.
 - The systemd service `ExecStart` points to a venv path under the repo; adjust if you a different python.
+
+## macOS (LaunchAgent)
+
+Reminderd can run on macOS using a LaunchAgent. The provided `install.sh` will detect macOS and install a LaunchAgent plist to `~/Library/LaunchAgents/org.reminderd.plist` and load it via `launchctl`.
+
+Manual steps if you prefer to do it yourself:
+
+1. Create a Python venv and make the scripts executable:
+
+```bash
+python3 -m venv ~/Reminderd/venv
+source ~/Reminderd/venv/bin/activate
+chmod +x ~/Reminderd/src/*
+```
+
+1. Copy the plist and load it:
+
+```bash
+mkdir -p ~/Library/LaunchAgents
+cp launchd/reminderd.plist ~/Library/LaunchAgents/org.reminderd.plist
+launchctl unload ~/Library/LaunchAgents/org.reminderd.plist 2>/dev/null || true
+launchctl load ~/Library/LaunchAgents/org.reminderd.plist
+```
+
+## Notes on notifications
+
+On macOS the daemon uses AppleScript via `osascript` to show a notification.
+
+On Linux the daemon uses `notify-send`.
