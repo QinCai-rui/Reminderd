@@ -19,9 +19,13 @@
     <key>EnvironmentVariables</key>
     <dict>
       <key>PATH</key>
-      <string>/usr/local/bin:/usr/bin:/bin</string>
+      <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
       <key>DISPLAY</key>
       <string>:0</string>
+      <key>USER</key>
+      <string>$USER</string>
+      <key>HOME</key>
+      <string>$HOME</string>
     </dict>
     <key>WorkingDirectory</key>
     <string>$HOME/Reminderd</string>
