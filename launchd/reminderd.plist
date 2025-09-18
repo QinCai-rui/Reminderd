@@ -14,6 +14,8 @@
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <key>SessionCreate</key>
+    <true/>
     <key>WorkingDirectory</key>
     <string>$HOME/Reminderd</string>
     <key>StandardOutPath</key>
