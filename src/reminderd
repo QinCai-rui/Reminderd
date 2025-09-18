@@ -20,6 +20,8 @@ import traceback
 from pathlib import Path
 from datetime import datetime
 import subprocess
+import logging
+import logging.handlers
 
 # store here so don't need root
 SOCKET_PATH = os.environ.get("REMINDERD_SOCKET", str(Path.home() / ".local" / "share" / "reminderd" / "reminderd.sock"))
@@ -30,6 +32,29 @@ CHECK_INTERVAL = float(os.environ.get("REMINDERD_CHECK_INTERVAL", "1.0"))
 def ensure_dirs():
     d = Path(DB_PATH).parent
     d.mkdir(parents=True, exist_ok=True)
+
+
+def setup_logging():
+    """Configure logging to file in the data directory and stderr."""
+    log_dir = Path(DB_PATH).parent
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "reminderd.log"
+    logger = logging.getLogger("reminderd")
+    logger.setLevel(logging.DEBUG)
+    # avoid duplicate handlers if called multiple times
+    if logger.handlers:
+        return logger
+    # file handler with rotation
+    fh = logging.handlers.RotatingFileHandler(str(log_file), maxBytes=10 * 1024 * 1024, backupCount=3)
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logger.addHandler(fh)
+    # console (stderr) handler
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.INFO)
+    ch.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logger.addHandler(ch)
+    return logger
 
 
 def init_db(conn: sqlite3.Connection):
@@ -77,22 +102,20 @@ def send_notification(summary: str, body: str = ""):
     - On macOS use `osascript` to display a user notification via AppleScript.
     - On Linux try `notify-send`.
     """
+    logger = logging.getLogger("reminderd")
     try:
+        logger.info("notify: %s - %s", summary, body)
         if sys.platform == 'darwin':
-            # Use AppleScript to show a user notification.
             esc_body = body.replace('"', '\\"')
             esc_summary = summary.replace('"', '\\"')
             script = 'display notification "{}" with title "{}"'.format(esc_body, esc_summary)
             subprocess.Popen(["osascript", "-e", script])
             return
-        # Default: try notify-send (Linux)
         subprocess.Popen(["notify-send", summary, body])
     except FileNotFoundError:
-        # notify-send / osascript not found
-        print(f"[reminderd] notification unavailable: {summary} - {body}", file=sys.stderr)
+        logger.warning("notification unavailable: %s - %s", summary, body)
     except Exception:
-        # Best-effort only
-        print("[reminderd] notification failed", file=sys.stderr)
+        logger.exception("notification failed: %s - %s", summary, body)
 
 
 class ReminderDaemon:
@@ -124,7 +147,8 @@ class ReminderDaemon:
         self.checker_thread = threading.Thread(target=self._check_loop, daemon=True)
         self.listener_thread.start()
         self.checker_thread.start()
-        print(f"reminderd running, socket={self.socket_path}, db={self.db_path}")
+        self.logger = setup_logging()
+        self.logger.info("reminderd running, socket=%s, db=%s", self.socket_path, self.db_path)
         try:
             while not self._stop.is_set():
                 time.sleep(0.2)
@@ -148,6 +172,7 @@ class ReminderDaemon:
             try:
                 client, _ = self.server.accept()
             except Exception:
+                self.logger.exception("server accept failed")
                 break
             t = threading.Thread(target=self._handle_client, args=(client,), daemon=True)
             t.start()
@@ -167,10 +192,11 @@ class ReminderDaemon:
                 line = data.decode(errors="ignore").strip()
                 if not line:
                     return
+                self.logger.info("client cmd: %s", line)
                 resp = self._process_command(line)
                 client_sock.sendall((resp + "\n").encode())
             except Exception:
-                traceback.print_exc()
+                self.logger.exception("client handler error")
 
     def _process_command(self, line: str) -> str:
         # Simple pipe-separated protocol
@@ -186,6 +212,7 @@ class ReminderDaemon:
             except Exception:
                 return "ERR|bad epoch"
             rid = add_reminder(self.conn, when_ts, msg)
+            self.logger.info("added reminder id=%s when=%s msg=%s", rid, when_ts, msg)
             return f"OK|{rid}"
         elif cmd == "LIST":
             rows = list_reminders(self.conn)
@@ -201,6 +228,7 @@ class ReminderDaemon:
             except Exception:
                 return "ERR|bad id"
             n = remove_reminder(self.conn, rid)
+            self.logger.info("removed reminder id=%s removed=%s", rid, n)
             return f"OK|removed:{n}"
         elif cmd == "PING":
             return "OK|PONG"
@@ -217,11 +245,12 @@ class ReminderDaemon:
                 for (rid, when_ts, message) in due:
                     # Send notification
                     ts_str = datetime.fromtimestamp(when_ts).strftime('%Y-%m-%d %H:%M:%S')
+                    self.logger.info("due reminder id=%s when=%s msg=%s", rid, when_ts, message)
                     send_notification(f"Reminder: {ts_str}", message)
                     mark_delivered(self.conn, rid)
                 time.sleep(CHECK_INTERVAL)
             except Exception:
-                traceback.print_exc()
+                self.logger.exception("check loop error")
 
 
 def main():
