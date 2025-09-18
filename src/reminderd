@@ -106,45 +106,59 @@ def send_notification(summary: str, body: str = ""):
     logger = logging.getLogger("reminderd")
     try:
         logger.info("notify: %s - %s", summary, body)
-        # Prefer terminal-notifier (brew) if available — it tends to work well from daemons
-        tn = shutil.which("terminal-notifier")
-        if tn:
-            # terminal-notifier expects -title and -message
-            res = subprocess.run([tn, "-title", summary, "-message", body], capture_output=True, text=True, timeout=5)
-            if res.returncode != 0:
-                logger.warning("terminal-notifier failed rc=%s stdout=%r stderr=%r", res.returncode, res.stdout, res.stderr)
-            else:
-                logger.info("terminal-notifier invoked successfully")
-            return
-        # Debug fallback: show a dialog if user explicitly requests it via env var
-        if os.environ.get("REMINDERD_FORCE_DIALOG") == "1":
-            # blocking dialog for debugging — guaranteed visible if GUI session is available
-            script = 'display dialog "{}" with title "{}"'.format(body.replace('"', '\\"'), summary.replace('"', '\\"'))
-            res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=10)
-            if res.returncode != 0:
-                logger.warning("osascript dialog failed rc=%s stdout=%r stderr=%r", res.returncode, res.stdout, res.stderr)
-            else:
-                logger.info("osascript dialog displayed")
-            return
+        
         if sys.platform == 'darwin':
-            esc_body = body.replace('"', '\\"')
-            esc_summary = summary.replace('"', '\\"')
-            script = 'display notification "{}" with title "{}"'.format(esc_body, esc_summary)
-            # run synchronously so we can detect failures
-            res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=5)
-            if res.returncode != 0:
-                logger.warning("osascript failed rc=%s stdout=%r stderr=%r", res.returncode, res.stdout, res.stderr)
+            # On macOS, try multiple notification methods in order of preference
+            
+            # Method 1: terminal-notifier (if installed via brew)
+            tn = shutil.which("terminal-notifier")
+            if tn:
+                res = subprocess.run([tn, "-title", summary, "-message", body, "-sound", "default"], 
+                                   capture_output=True, text=True, timeout=10)
+                if res.returncode == 0:
+                    logger.info("terminal-notifier invoked successfully")
+                    return
+                else:
+                    logger.warning("terminal-notifier failed rc=%s stdout=%r stderr=%r", res.returncode, res.stdout, res.stderr)
+            
+            # Method 2: osascript with notification (built-in macOS)
+            esc_body = body.replace('"', '\\"').replace('\\', '\\\\')
+            esc_summary = summary.replace('"', '\\"').replace('\\', '\\\\')
+            script = f'display notification "{esc_body}" with title "{esc_summary}" sound name "default"'
+            res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=10)
+            if res.returncode == 0:
+                logger.info("osascript notification invoked successfully")
+                return
             else:
-                logger.info("osascript invoked successfully")
+                logger.warning("osascript notification failed rc=%s stdout=%r stderr=%r", res.returncode, res.stdout, res.stderr)
+            
+            # Method 3: osascript with dialog (fallback - more intrusive but guaranteed visible)
+            if os.environ.get("REMINDERD_FORCE_DIALOG") == "1":
+                script = f'display dialog "{esc_body}" with title "{esc_summary}" buttons {{"OK"}} default button 1'
+                res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=15)
+                if res.returncode == 0:
+                    logger.info("osascript dialog displayed successfully")
+                    return
+                else:
+                    logger.warning("osascript dialog failed rc=%s stdout=%r stderr=%r", res.returncode, res.stdout, res.stderr)
+            
+            logger.error("All macOS notification methods failed")
             return
-        # Default: try notify-send (Linux)
-        res = subprocess.run(["notify-send", summary, body], capture_output=True, text=True, timeout=5)
-        if res.returncode != 0:
-            logger.warning("notify-send failed rc=%s stdout=%r stderr=%r", res.returncode, res.stdout, res.stderr)
+        
+        # Linux: try notify-send
+        if shutil.which("notify-send"):
+            res = subprocess.run(["notify-send", summary, body], capture_output=True, text=True, timeout=5)
+            if res.returncode == 0:
+                logger.info("notify-send invoked successfully")
+            else:
+                logger.warning("notify-send failed rc=%s stdout=%r stderr=%r", res.returncode, res.stdout, res.stderr)
         else:
-            logger.info("notify-send invoked successfully")
-    except FileNotFoundError:
-        logger.warning("notification unavailable: %s - %s", summary, body)
+            logger.warning("notify-send not available on this system")
+            
+    except FileNotFoundError as e:
+        logger.warning("notification command not found: %s", e)
+    except subprocess.TimeoutExpired:
+        logger.error("notification command timed out")
     except Exception:
         logger.exception("notification failed: %s - %s", summary, body)
 
