@@ -31,10 +31,34 @@ if [ "$(uname)" = "Darwin" ]; then
 		fi
 
 		echo "Loading LaunchAgent..."
-		echo "Loading LaunchAgent..."
 		launchctl unload "$INSTALLED_PLIST" 2>/dev/null || true
 		launchctl load "$INSTALLED_PLIST"
 		echo "Reminderd LaunchAgent installed and loaded ($INSTALLED_PLIST)."
+
+		# macOS: ensure terminal-notifier is installed for better notifications
+		# If Homebrew is present, use it to install terminal-notifier. Otherwise, inform the user.
+		if command -v brew >/dev/null 2>&1; then
+			if ! command -v terminal-notifier >/dev/null 2>&1; then
+				echo "Installing terminal-notifier via Homebrew..."
+				brew install terminal-notifier || true
+			else
+				echo "terminal-notifier already installed"
+			fi
+			# Try a test notification to prompt macOS notification permission if needed
+			if command -v terminal-notifier >/dev/null 2>&1; then
+				echo "Sending test notification via terminal-notifier..."
+				terminal-notifier -title "Reminderd" -message "This is a test notification from Reminderd" || true
+				# Open System Settings to Notifications pane to help user enable notifications
+				if [[ "$OSTYPE" == "darwin"* ]]; then
+					# macOS Ventura+ uses 'open' to System Settings; this will open Notifications settings
+					open "x-apple.systempreferences:com.apple.Notifications-Settings.extension"
+				fi
+			else
+				echo "terminal-notifier not available after attempted install. You may need to install it manually: brew install terminal-notifier"
+			fi
+		else
+			echo "Homebrew not found. To get native macOS notifications install Homebrew (https://brew.sh/) and run: brew install terminal-notifier"
+		fi
 else
 		echo "Assuming Linux with systemd user units..."
 		echo "Copying systemd user units..."
