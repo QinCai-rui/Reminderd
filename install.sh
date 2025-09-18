@@ -41,6 +41,16 @@ if [ "$(uname)" = "Darwin" ]; then
 		launchctl load "$INSTALLED_PLIST"
 		echo "Reminderd LaunchAgent installed and loaded ($INSTALLED_PLIST)."
 
+		# Quick health check: wait a few seconds and check if socket exists
+		echo "Performing health check..."
+		sleep 3
+		if [ -S "$HOME/.local/share/reminderd/reminderd.sock" ]; then
+			echo "✓ Daemon socket found - Reminderd is running!"
+		else
+			echo "⚠ Daemon socket not found. Check logs at ~/Library/Logs/reminderd.err.log"
+			echo "  You may need to run: launchctl unload $INSTALLED_PLIST && launchctl load $INSTALLED_PLIST"
+		fi
+
 		# macOS: ensure terminal-notifier is installed for better notifications
 		# If Homebrew is present, use it to install terminal-notifier. Otherwise, inform the user.
 		if command -v brew >/dev/null 2>&1; then
