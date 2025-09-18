@@ -79,8 +79,10 @@ def send_notification(summary: str, body: str = ""):
     """
     try:
         if sys.platform == 'darwin':
-            # Use AppleScript to show a user notification
-            script = f'display notification "{body.replace("\"", "\\\"")}" with title "{summary.replace("\"", "\\\"")}"'
+            # Use AppleScript to show a user notification.
+            esc_body = body.replace('"', '\\"')
+            esc_summary = summary.replace('"', '\\"')
+            script = 'display notification "{}" with title "{}"'.format(esc_body, esc_summary)
             subprocess.Popen(["osascript", "-e", script])
             return
         # Default: try notify-send (Linux)
