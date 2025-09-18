@@ -72,12 +72,25 @@ def mark_delivered(conn: sqlite3.Connection, rid: int):
 
 
 def send_notification(summary: str, body: str = ""):
-    # Try notify-send; keep it simple to avoid extra deps.
+    """Send a desktop notification.
+
+    - On macOS use `osascript` to display a user notification via AppleScript.
+    - On Linux try `notify-send`.
+    """
     try:
+        if sys.platform == 'darwin':
+            # Use AppleScript to show a user notification
+            script = f'display notification "{body.replace("\"", "\\\"")}" with title "{summary.replace("\"", "\\\"")}"'
+            subprocess.Popen(["osascript", "-e", script])
+            return
+        # Default: try notify-send (Linux)
         subprocess.Popen(["notify-send", summary, body])
+    except FileNotFoundError:
+        # notify-send / osascript not found
+        print(f"[reminderd] notification unavailable: {summary} - {body}", file=sys.stderr)
     except Exception:
         # Best-effort only
-        print("[reminderd] notify-send failed", file=sys.stderr)
+        print("[reminderd] notification failed", file=sys.stderr)
 
 
 class ReminderDaemon:
