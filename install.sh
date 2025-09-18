@@ -20,18 +20,21 @@ echo "Installing service for this platform..."
 if [ "$(uname)" = "Darwin" ]; then
 		echo "Detected macOS - installing LaunchAgent..."
 		mkdir -p "$LAUNCH_AGENTS_DIR"
-		# Require a plist in the repo; do not auto-generate one.
-		if [ -f "$INSTALL_DIR/launchd/reminderd.plist" ]; then
-			install -m 644 "$INSTALL_DIR/launchd/reminderd.plist" "$LAUNCH_AGENTS_DIR/"
+		# install plist from repo
+		SOURCE_PLIST="$INSTALL_DIR/launchd/reminderd.plist"
+		if [ -f "$SOURCE_PLIST" ]; then
+			install -m 644 "$SOURCE_PLIST" "$LAUNCH_AGENTS_DIR/"
+			INSTALLED_PLIST="$LAUNCH_AGENTS_DIR/$(basename "$SOURCE_PLIST")"
 		else
 			echo "ERROR: launchd/reminderd.plist not found in the repository for some reason" >&2
 			exit 1
 		fi
 
 		echo "Loading LaunchAgent..."
-		launchctl unload "$LAUNCH_AGENTS_DIR/org.reminderd.plist" 2>/dev/null || true
-		launchctl load "$LAUNCH_AGENTS_DIR/org.reminderd.plist"
-		echo "Reminderd LaunchAgent installed and loaded (org.reminderd)."
+		echo "Loading LaunchAgent..."
+		launchctl unload "$INSTALLED_PLIST" 2>/dev/null || true
+		launchctl load "$INSTALLED_PLIST"
+		echo "Reminderd LaunchAgent installed and loaded ($INSTALLED_PLIST)."
 else
 		echo "Assuming Linux with systemd user units..."
 		echo "Copying systemd user units..."
