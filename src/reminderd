@@ -109,9 +109,19 @@ def send_notification(summary: str, body: str = ""):
             esc_body = body.replace('"', '\\"')
             esc_summary = summary.replace('"', '\\"')
             script = 'display notification "{}" with title "{}"'.format(esc_body, esc_summary)
-            subprocess.Popen(["osascript", "-e", script])
+            # run synchronously so we can detect failures
+            res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=5)
+            if res.returncode != 0:
+                logger.warning("osascript failed rc=%s stdout=%r stderr=%r", res.returncode, res.stdout, res.stderr)
+            else:
+                logger.info("osascript invoked successfully")
             return
-        subprocess.Popen(["notify-send", summary, body])
+        # Default: try notify-send (Linux)
+        res = subprocess.run(["notify-send", summary, body], capture_output=True, text=True, timeout=5)
+        if res.returncode != 0:
+            logger.warning("notify-send failed rc=%s stdout=%r stderr=%r", res.returncode, res.stdout, res.stderr)
+        else:
+            logger.info("notify-send invoked successfully")
     except FileNotFoundError:
         logger.warning("notification unavailable: %s - %s", summary, body)
     except Exception:
