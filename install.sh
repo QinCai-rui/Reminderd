@@ -4,6 +4,7 @@ set -e
 REPO_URL="https://github.com/QinCai-rui/Reminderd.git"
 INSTALL_DIR="$HOME/Reminderd"
 SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
+LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
 
 if [ ! -d "$INSTALL_DIR" ]; then
 	echo "Cloning Reminderd repo to $INSTALL_DIR..."
@@ -15,17 +16,35 @@ fi
 
 echo "Making scripts executable..."
 chmod +x "$INSTALL_DIR"/src/*
+echo "Installing service for this platform..."
+if [ "$(uname)" = "Darwin" ]; then
+		echo "Detected macOS - installing LaunchAgent..."
+		mkdir -p "$LAUNCH_AGENTS_DIR"
+		# Require a plist in the repo; do not auto-generate one.
+		if [ -f "$INSTALL_DIR/launchd/reminderd.plist" ]; then
+			install -m 644 "$INSTALL_DIR/launchd/reminderd.plist" "$LAUNCH_AGENTS_DIR/"
+		else
+			echo "ERROR: launchd/reminderd.plist not found in the repository for some reason" >&2
+			exit 1
+		fi
 
-echo "Copying systemd user units..."
-mkdir -p "$SYSTEMD_USER_DIR"
-install -m 644 "$INSTALL_DIR"/systemd/reminderd.socket "$SYSTEMD_USER_DIR/"
-install -m 644 "$INSTALL_DIR"/systemd/reminderd.service "$SYSTEMD_USER_DIR/"
+		echo "Loading LaunchAgent..."
+		launchctl unload "$LAUNCH_AGENTS_DIR/org.reminderd.plist" 2>/dev/null || true
+		launchctl load "$LAUNCH_AGENTS_DIR/org.reminderd.plist"
+		echo "Reminderd LaunchAgent installed and loaded (org.reminderd)."
+else
+		echo "Assuming Linux with systemd user units..."
+		echo "Copying systemd user units..."
+		mkdir -p "$SYSTEMD_USER_DIR"
+		install -m 644 "$INSTALL_DIR"/systemd/reminderd.socket "$SYSTEMD_USER_DIR/"
+		install -m 644 "$INSTALL_DIR"/systemd/reminderd.service "$SYSTEMD_USER_DIR/"
 
-echo "Reloading and enabling reminderd.socket (user)..."
-systemctl --user daemon-reload # this might not be needed, but just in case
-systemctl --user enable --now reminderd.socket
+		echo "Reloading and enabling reminderd.socket (user)..."
+		systemctl --user daemon-reload # this might not be needed, but just in case
+		systemctl --user enable --now reminderd.socket
 
-echo "Reminderd user-level installation complete."
+		echo "Reminderd user-level installation complete."
+fi
 
 # Add Reminderd CLI to shell config
 SHELL_CONFIG=""

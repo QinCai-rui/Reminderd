@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>org.reminderd</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/usr/bin/env</string>
+      <string>python3</string>
+      <string>$HOME/Reminderd/src/reminderd</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>WorkingDirectory</key>
+    <string>$HOME/Reminderd</string>
+    <key>StandardOutPath</key>
+    <string>$HOME/Library/Logs/reminderd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>$HOME/Library/Logs/reminderd.err.log</string>
+  </dict>
+</plist>
